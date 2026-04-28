@@ -1,0 +1,91 @@
+openapi: 3.0.0
+info:
+    title: Product Service API
+    version: 1.0.0
+    description: REST API for the Product Service, backed by AWS API Gateway and Lambda.
+
+paths:
+    /products:
+        get:
+            summary: Get all products
+            operationId: getProductsList
+            tags:
+                - Products
+            responses:
+                "200":
+                    description: A list of all products
+                    content:
+                        application/json:
+                            schema:
+                                type: array
+                                items:
+                                    $ref: "#/components/schemas/Product"
+                            example:
+                                - id: "7567ec4b-b10c-48c5-9345-fc73c48a80aa"
+                                  title: "ProductOne"
+                                  description: "Short Product Description1"
+                                  price: 24
+
+    /products/{productId}:
+        get:
+            summary: Get a product by ID
+            operationId: getProductsById
+            tags:
+                - Products
+            parameters:
+                - name: productId
+                  in: path
+                  required: true
+                  description: UUID of the product
+                  schema:
+                      type: string
+                      format: uuid
+                      example: "7567ec4b-b10c-48c5-9345-fc73c48a80aa"
+            responses:
+                "200":
+                    description: The requested product
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Product"
+                "404":
+                    description: Product not found
+                    content:
+                        application/json:
+                            schema:
+                                $ref: "#/components/schemas/Error"
+                            example:
+                                message: "Product not found"
+
+components:
+    schemas:
+        Product:
+            type: object
+            required:
+                - id
+                - title
+                - description
+                - price
+            properties:
+                id:
+                    type: string
+                    format: uuid
+                    example: "7567ec4b-b10c-48c5-9345-fc73c48a80aa"
+                title:
+                    type: string
+                    example: "ProductOne"
+                description:
+                    type: string
+                    example: "Short Product Description1"
+                price:
+                    type: number
+                    example: 24
+
+        Error:
+            type: object
+            required:
+                - message
+            properties:
+                message:
+                    type: string
+                    example: "Product not found"
