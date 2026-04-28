@@ -5,8 +5,9 @@ import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
 const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 export const handler = async (
-    _event: APIGatewayProxyEvent,
+    event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
+    console.log("getProductsList", event);
     try {
         const [productsResult, stockResult] = await Promise.all([
             client.send(

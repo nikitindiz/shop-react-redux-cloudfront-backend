@@ -11,6 +11,7 @@ const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 export const handler = async (
     event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
+    console.log("createProduct", event);
     try {
         const body = JSON.parse(event.body ?? "{}");
         const { title, description = "", price, count = 0 } = body;
