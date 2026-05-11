@@ -11,5 +11,8 @@ const env = {
     region: process.env.CDK_DEFAULT_REGION,
 };
 
-new ProductsApiStack(app, "ProductsApiStack", { env });
-new ImportServiceStack(app, "ImportServiceStack", { env });
+const productsStack = new ProductsApiStack(app, "ProductsApiStack", { env });
+new ImportServiceStack(app, "ImportServiceStack", {
+    env,
+    catalogItemsQueue: productsStack.catalogItemsQueue,
+});
