@@ -14,6 +14,7 @@ import * as path from "path";
 
 interface ImportServiceStackProps extends StackProps {
     catalogItemsQueue: aws_sqs.Queue;
+    basicAuthorizerArn: string;
 }
 
 export class ImportServiceStack extends Stack {
@@ -91,10 +92,46 @@ export class ImportServiceStack extends Stack {
             },
         });
 
+        const basicAuthorizerFn = aws_lambda.Function.fromFunctionAttributes(
+            this,
+            "BasicAuthorizerRef",
+            {
+                functionArn: props.basicAuthorizerArn,
+                sameEnvironment: true,
+            },
+        );
+
+        const authorizer = new aws_apigateway.TokenAuthorizer(
+            this,
+            "ImportAuthorizer",
+            {
+                handler: basicAuthorizerFn,
+                identitySource: "method.request.header.Authorization",
+            },
+        );
+
+        api.addGatewayResponse("Unauthorized", {
+            type: aws_apigateway.ResponseType.UNAUTHORIZED,
+            responseHeaders: {
+                "Access-Control-Allow-Origin": "'*'",
+            },
+        });
+
+        api.addGatewayResponse("AccessDenied", {
+            type: aws_apigateway.ResponseType.ACCESS_DENIED,
+            responseHeaders: {
+                "Access-Control-Allow-Origin": "'*'",
+            },
+        });
+
         const importResource = api.root.addResource("import");
         importResource.addMethod(
             "GET",
             new aws_apigateway.LambdaIntegration(importProductsFileLambda),
+            {
+                authorizer,
+                authorizationType: aws_apigateway.AuthorizationType.CUSTOM,
+            },
         );
     }
 }
