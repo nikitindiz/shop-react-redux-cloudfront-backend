@@ -3,6 +3,7 @@ import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import { ProductsApiStack } from "../lib/deploy-web-app-stack";
 import { ImportServiceStack } from "../lib/import-service-stack";
+import { AuthorizationServiceStack } from "../lib/authorization-service-stack";
 
 const app = new cdk.App();
 
@@ -12,7 +13,13 @@ const env = {
 };
 
 const productsStack = new ProductsApiStack(app, "ProductsApiStack", { env });
+const authStack = new AuthorizationServiceStack(
+    app,
+    "AuthorizationServiceStack",
+    { env },
+);
 new ImportServiceStack(app, "ImportServiceStack", {
     env,
     catalogItemsQueue: productsStack.catalogItemsQueue,
+    basicAuthorizerArn: authStack.basicAuthorizerFunction.functionArn,
 });
