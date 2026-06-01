@@ -1,0 +1,91 @@
+import {
+    Stack,
+    type StackProps,
+    RemovalPolicy,
+    aws_lambda,
+    aws_lambda_nodejs,
+    aws_apigateway,
+    aws_s3,
+    aws_s3_notifications,
+} from "aws-cdk-lib";
+import { Construct } from "constructs";
+import * as path from "path";
+
+export class ImportServiceStack extends Stack {
+    constructor(scope: Construct, id: string, props?: StackProps) {
+        super(scope, id, props);
+
+        const importBucket = new aws_s3.Bucket(this, "ImportBucket", {
+            removalPolicy: RemovalPolicy.DESTROY,
+            autoDeleteObjects: true,
+            cors: [
+                {
+                    allowedMethods: [aws_s3.HttpMethods.PUT],
+                    allowedOrigins: ["*"],
+                    allowedHeaders: ["*"],
+                },
+            ],
+        });
+
+        const importProductsFileLambda = new aws_lambda_nodejs.NodejsFunction(
+            this,
+            "ImportProductsFileLambda",
+            {
+                functionName: "importProductsFile",
+                entry: path.join(__dirname, "../labmdas/importProductsFile.ts"),
+                handler: "handler",
+                runtime: aws_lambda.Runtime.NODEJS_22_X,
+                bundling: {
+                    minify: true,
+                    sourceMap: true,
+                    target: "node22",
+                    externalModules: [],
+                },
+                environment: {
+                    BUCKET_NAME: importBucket.bucketName,
+                },
+            },
+        );
+
+        importBucket.grantPut(importProductsFileLambda, "uploaded/*");
+
+        const importFileParserLambda = new aws_lambda_nodejs.NodejsFunction(
+            this,
+            "ImportFileParserLambda",
+            {
+                functionName: "importFileParser",
+                entry: path.join(__dirname, "../labmdas/importFileParser.ts"),
+                handler: "handler",
+                runtime: aws_lambda.Runtime.NODEJS_22_X,
+                bundling: {
+                    minify: true,
+                    sourceMap: true,
+                    target: "node22",
+                    externalModules: [],
+                },
+            },
+        );
+
+        importBucket.grantReadWrite(importFileParserLambda);
+
+        importBucket.addEventNotification(
+            aws_s3.EventType.OBJECT_CREATED,
+            new aws_s3_notifications.LambdaDestination(importFileParserLambda),
+            { prefix: "uploaded/" },
+        );
+
+        const api = new aws_apigateway.RestApi(this, "ImportApi", {
+            restApiName: "Import Service",
+            defaultCorsPreflightOptions: {
+                allowOrigins: aws_apigateway.Cors.ALL_ORIGINS,
+                allowMethods: aws_apigateway.Cors.ALL_METHODS,
+            },
+        });
+
+        const importResource = api.root.addResource("import");
+        importResource.addMethod(
+            "GET",
+            new aws_apigateway.LambdaIntegration(importProductsFileLambda),
+        );
+    }
+}
