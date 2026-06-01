@@ -7,12 +7,17 @@ import {
     aws_apigateway,
     aws_s3,
     aws_s3_notifications,
+    aws_sqs,
 } from "aws-cdk-lib";
 import { Construct } from "constructs";
 import * as path from "path";
 
+interface ImportServiceStackProps extends StackProps {
+    catalogItemsQueue: aws_sqs.Queue;
+}
+
 export class ImportServiceStack extends Stack {
-    constructor(scope: Construct, id: string, props?: StackProps) {
+    constructor(scope: Construct, id: string, props: ImportServiceStackProps) {
         super(scope, id, props);
 
         const importBucket = new aws_s3.Bucket(this, "ImportBucket", {
@@ -63,10 +68,14 @@ export class ImportServiceStack extends Stack {
                     target: "node22",
                     externalModules: [],
                 },
+                environment: {
+                    SQS_QUEUE_URL: props.catalogItemsQueue.queueUrl,
+                },
             },
         );
 
         importBucket.grantReadWrite(importFileParserLambda);
+        props.catalogItemsQueue.grantSendMessages(importFileParserLambda);
 
         importBucket.addEventNotification(
             aws_s3.EventType.OBJECT_CREATED,

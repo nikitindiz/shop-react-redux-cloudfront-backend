@@ -3,6 +3,10 @@ import {
     aws_dynamodb,
     aws_lambda,
     aws_lambda_nodejs,
+    aws_lambda_event_sources,
+    aws_sqs,
+    aws_sns,
+    aws_sns_subscriptions,
     custom_resources,
     RemovalPolicy,
 } from "aws-cdk-lib";
@@ -11,6 +15,8 @@ import * as path from "path";
 import { products as productsSeedData } from "../labmdas/products";
 
 export class ProductsApiService extends Construct {
+    public readonly catalogItemsQueue: aws_sqs.Queue;
+
     constructor(scope: Construct, id: string) {
         super(scope, id);
 
@@ -187,6 +193,80 @@ export class ProductsApiService extends Construct {
 
         productsTable.grantWriteData(createProductLambda);
         stockTable.grantWriteData(createProductLambda);
+
+        // SQS Queue
+        this.catalogItemsQueue = new aws_sqs.Queue(this, "CatalogItemsQueue", {
+            queueName: "catalogItemsQueue",
+        });
+
+        // SNS Topic
+        const snsEmail =
+            scope.node.tryGetContext("snsEmail") || "placeholder@example.com";
+        const snsPremiumEmail =
+            scope.node.tryGetContext("snsPremiumEmail") || snsEmail;
+
+        const createProductTopic = new aws_sns.Topic(
+            this,
+            "CreateProductTopic",
+            {
+                topicName: "createProductTopic",
+            },
+        );
+
+        createProductTopic.addSubscription(
+            new aws_sns_subscriptions.EmailSubscription(snsEmail),
+        );
+
+        if (snsPremiumEmail !== snsEmail) {
+            createProductTopic.addSubscription(
+                new aws_sns_subscriptions.EmailSubscription(snsPremiumEmail, {
+                    filterPolicy: {
+                        price: aws_sns.SubscriptionFilter.numericFilter({
+                            greaterThan: 100,
+                        }),
+                    },
+                }),
+            );
+        }
+
+        // catalogBatchProcess Lambda
+        const catalogBatchProcessLambda = new aws_lambda_nodejs.NodejsFunction(
+            this,
+            "CatalogBatchProcessLambda",
+            {
+                functionName: "catalogBatchProcess",
+                entry: path.join(
+                    __dirname,
+                    "../labmdas/catalogBatchProcess.ts",
+                ),
+                handler: "handler",
+                runtime: aws_lambda.Runtime.NODEJS_22_X,
+                bundling: {
+                    minify: true,
+                    sourceMap: true,
+                    target: "node22",
+                    externalModules: [],
+                },
+                environment: {
+                    PRODUCTS_TABLE_NAME: productsTable.tableName,
+                    STOCK_TABLE_NAME: stockTable.tableName,
+                    SNS_TOPIC_ARN: createProductTopic.topicArn,
+                },
+            },
+        );
+
+        productsTable.grantWriteData(catalogBatchProcessLambda);
+        stockTable.grantWriteData(catalogBatchProcessLambda);
+        createProductTopic.grantPublish(catalogBatchProcessLambda);
+
+        catalogBatchProcessLambda.addEventSource(
+            new aws_lambda_event_sources.SqsEventSource(
+                this.catalogItemsQueue,
+                {
+                    batchSize: 5,
+                },
+            ),
+        );
 
         const api = new aws_apigateway.RestApi(this, "ProductsApi", {
             restApiName: "Products Service",
