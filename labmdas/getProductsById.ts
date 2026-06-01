@@ -1,9 +1,13 @@
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { products } from "./products";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
+const client = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 export const handler = async (
     event: APIGatewayProxyEvent,
 ): Promise<APIGatewayProxyResult> => {
+    console.log("getProductsById", event);
     try {
         const productId = event.pathParameters?.productId;
 
@@ -18,9 +22,22 @@ export const handler = async (
             };
         }
 
-        const product = products.find((p) => p.id === productId);
+        const [productResult, stockResult] = await Promise.all([
+            client.send(
+                new GetCommand({
+                    TableName: process.env.PRODUCTS_TABLE_NAME,
+                    Key: { id: productId },
+                }),
+            ),
+            client.send(
+                new GetCommand({
+                    TableName: process.env.STOCK_TABLE_NAME,
+                    Key: { product_id: productId },
+                }),
+            ),
+        ]);
 
-        if (!product) {
+        if (!productResult.Item) {
             return {
                 statusCode: 404,
                 headers: {
@@ -37,7 +54,10 @@ export const handler = async (
                 "Content-Type": "application/json",
                 "Access-Control-Allow-Origin": "*",
             },
-            body: JSON.stringify(product),
+            body: JSON.stringify({
+                ...productResult.Item,
+                count: stockResult.Item?.count ?? 0,
+            }),
         };
     } catch (error) {
         return {
